@@ -1,128 +1,102 @@
 import csv
+import os
 
 
-def parse_parameters():
-    """Функция для ввода параметров из консоли."""
+def parse_input():
     params = {}
-    print("Введите параметры (напр. file=input.csv или rows=3). Нажмите Ctrl+D для завершения ввода:")
+    items = []
     try:
         while True:
             line = input().strip()
-            if "=" in line:
-                key, value = line.split("=", 1)
+            if '=' in line:
+                key, value = line.split('=', 1)
                 params[key.strip()] = value.strip()
+            else:
+                items.extend(
+                    item.strip() for item in line.replace(";", ",").split(",")
+                )
     except EOFError:
         pass
 
-    # Установка значений по умолчанию
-    params.setdefault("f", "input.csv")
+    params.setdefault("file", "input.csv")
+    params.setdefault("items", items)
     return params
 
 
-def validate_parameters(params):
-    """Проверка параметров на корректность."""
+def parse_csv(file_path):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Файл {file_path} не найден.")
+
+    with open(file_path, 'r', encoding='utf-8') as csv_file:
+        reader = csv.reader(csv_file, delimiter=',', quotechar='"')
+        data = [row for row in reader if any(cell.strip() for cell in row)]
+
+    if not data:
+        raise ValueError(f"Файл {file_path} пустой.")
+
+    return data
+
+
+def validate_data(params, csv_data):
     errors = []
-
-    # Проверяем наличие числовых параметров
-    for param in ["n", "rows", "cols", "m"]:
-        if param in params:
-            try:
-                params[param] = int(params[param])
-            except ValueError:
-                errors.append(f"Параметр {param} должен быть целым числом.")
-        else:
-            errors.append(f"Отсутствует обязательный параметр {param}.")
-
-    # Проверка имени файла
-    if "f" not in params or not params["f"].endswith(".csv"):
-        errors.append("Параметр 'f' (file) должен указывать на файл с расширением .csv.")
-
-    # Проверка предметов
-    if "items" in params:
-        items = params["items"].split(";")
-        items = [item.strip() for item in items if item.strip()]  # Убираем пустые строки и пробелы
-        if len(items) != params.get("m", len(items)):  # Сравниваем количество предметов с m
-            errors.append(
-                f"Количество предметов ({len(items)}) не совпадает с заявленным параметром 'm' ({params['m']})."
-            )
-        params["items"] = items
-    else:
-        if "m" in params and params["m"] > 0:
-            errors.append("Список предметов ('items') не указан, но параметр 'm' больше 0.")
-        params["items"] = []
-
-    return errors
-
-
-def read_csv(file_name):
-    """Чтение данных из CSV-файла."""
     try:
-        with open(file_name, newline='', encoding="utf-8") as csvfile:
-            reader = csv.reader(csvfile)
-            return [row for row in reader]
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Файл {file_name} не найден.")
-    except Exception as e:
-        raise Exception(f"Ошибка при чтении файла {file_name}: {e}")
+        n = int(params.get("n", 0))
+        m = int(params.get("m", 0))
+        rows = int(params.get("rows", 0))
+        cols = int(params.get("cols", 0))
+    except ValueError:
+        raise ValueError("Параметры n, m, rows и cols должны быть целыми числами.")
 
+    actual_rows = len(csv_data)
+    actual_cols = max(len(row) for row in csv_data)
+    if actual_rows != rows:
+        errors.append(f"Количество строк в параметре {rows} не совпадает с количеством {actual_rows} в файле.")
+    if actual_cols != cols:
+        errors.append(f"Количество столбцов в файле {actual_cols} не совпадает с параметром {cols}.")
+    if rows * cols != n:
+        errors.append("Количество ящиков (rows * cols) не совпадает с параметром n.")
 
-def validate_csv_data(data, rows, cols):
-    """Проверка содержимого CSV-файла на соответствие."""
-    errors = []
-    if len(data) != rows:
-        errors.append(f"Ожидалось {rows} рядов, но найдено {len(data)}.")
-    for i, row in enumerate(data):
-        if len(row) != cols:
-            errors.append(f"В ряде {i + 1} ожидалось {cols} колонок, но найдено {len(row)}.")
+    csv_items = [
+        item.strip() for row in csv_data for cell in row if cell for item in cell.split(",")
+    ]
+    if len(csv_items) != m:
+        errors.append(f"Количество предметов в файле {len(csv_items)} не совпадает с параметром {m}.")
+
+    if "items" in params:
+        input_items = [item.strip() for item in params["items"]]
+        missing_items = set(input_items) - set(csv_items)
+        extra_items = set(csv_items) - set(input_items)
+        if missing_items:
+            errors.append(f"Не найдены предметы из параметров: {', '.join(missing_items)}.")
+        if extra_items:
+            errors.append(f"Переизбыточные предметы в файле: {', '.join(extra_items)}.")
     return errors
 
 
-def pigeonhole_principle(n, m):
-    """Формулировка принципа Дирихле."""
+def dirichle(n, m):
     if m > n:
         return f"Если в {n} ящиках лежит {m} предметов, то хотя бы в одном ящике лежит не менее {m // n + 1} предметов."
     elif m < n:
         return f"Если в {n} ящиках лежит {m} предметов, то пустых ящиков как минимум {n - m}."
     else:
-        return f"Если в {n} ящиках лежит {m} предметов, то в каждом ящике лежит ровно 1 предмет."
+        return "Все предметы могут быть распределены равномерно."
 
 
-def main():
-    # Ввод и парсинг параметров
-    params = parse_parameters()
+params = parse_input()
+file_path = params["file"]
 
-    # Проверка параметров
-    errors = validate_parameters(params)
+try:
+    csv_data = parse_csv(file_path)
+    errors = validate_data(params, csv_data)
+
     if errors:
-        print("Ошибки параметров:")
-        print("\n".join(errors))
-        return
-
-    # Чтение данных из CSV-файла
-    try:
-        csv_data = read_csv(params["f"])
-    except Exception as e:
-        print(e)
-        return
-
-    # Проверка данных CSV
-    csv_errors = validate_csv_data(csv_data, params["rows"], params["cols"])
-    if csv_errors:
-        print("Ошибки в содержимом CSV-файла:")
-        print("\n".join(csv_errors))
-        return
-
-    # Формулировка принципа Дирихле
-    result = pigeonhole_principle(params["n"], params["m"])
-    print(result)
-
-
-if __name__ == "__main__":
-    main()
-
-# file=input.csv
-# rows=3
-# cols=4
-# n=6
-# m=8
-# items=игрушка,коробка с карандашами,свечка,лего,кукла,свитер с оленями,мячик,расчёска
+        print("Ошибки:")
+        for error in errors:
+            print("-", error)
+    else:
+        n = int(params["n"])
+        m = int(params["m"])
+        principle = dirichle(n, m)
+        print(principle)
+except Exception as e:
+    print(f"Ошибка: {e}")
