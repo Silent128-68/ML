@@ -37,8 +37,13 @@ def parse_csv(file_path):
     return data
 
 
-def validate_data(params, csv_data):
+def check_data(params, csv_data):
     errors = []
+    allowed_keys = {"file", "n", "m", "rows", "cols", "items"}
+    extra_keys = set(params.keys()) - allowed_keys
+
+    if extra_keys:
+        raise ValueError(f"Обнаружены недопустимые параметры: {', '.join(extra_keys)}")
     try:
         n = int(params.get("n", 0))
         m = int(params.get("m", 0))
@@ -87,7 +92,7 @@ file_path = params["file"]
 
 try:
     csv_data = parse_csv(file_path)
-    errors = validate_data(params, csv_data)
+    errors = check_data(params, csv_data)
 
     if errors:
         print("Ошибки:")
